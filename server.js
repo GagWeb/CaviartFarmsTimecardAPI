@@ -434,14 +434,13 @@ const transporter = nodemailer.createTransport({
 // Route to send emails
 app.post('/send-email', (req, res) => {
   const { to, subject, text, html } = req.body;
-
   const mailOptions = {
     from: process.env.GMAIL_USER,
     to,
     subject,
     html
   };
-
+  console.log(mailOptions);
   transporter.sendMail(mailOptions, (error, info) => {
     if (error) {
       return res.status(500).send({ message: 'Error sending email', error });
