@@ -346,7 +346,7 @@ fastify.get('/email', async(request, reply) => {
       htmlContent += "<td>" + (Math.round((Math.round((data[i]["out"] - data[i]["in"]) / 60) / 60) * 10))/10 + "</td></tr>";
       totalHours += (Math.round((Math.round((data[i]["out"] - data[i]["in"]) / 60) / 60) * 10))/10;
     }
-    fetch('https://gagemail.glitch.me/send-email', {
+    fetch('/send-email', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -418,6 +418,33 @@ fastify.post('/updateData', async(request, reply) => {
   const {data} = request.body;
   writeData(data);
   return true;
+});
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS
+  }
+});
+
+// Route to send emails
+app.post('/send-email', (req, res) => {
+  const { to, subject, text, html } = req.body;
+
+  const mailOptions = {
+    from: process.env.GMAIL_USER,
+    to,
+    subject,
+    html
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      return res.status(500).send({ message: 'Error sending email', error });
+    }
+    res.send({ message: 'Email sent successfully', info });
+  });
 });
 
 /*fastify.get('/get-name', async(request, reply) => {
