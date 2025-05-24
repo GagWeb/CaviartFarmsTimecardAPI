@@ -358,10 +358,7 @@ fastify.get('/email', async(request, reply) => {
     };
     
     transporter.sendMail(mailOptions, (error, info) => {
-      if (error) {
-        return res.status(500).send({ message: 'Error sending email', error });
-      }
-      res.send({ message: 'Email sent successfully', info });
+      console.log(info);
     });
   }
   
