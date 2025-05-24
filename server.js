@@ -6,6 +6,13 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require("path");
 const nodemailer = require('nodemailer');
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASS
+  }
+});
 const express = require('express');
 const app = express();
 require('dotenv').config();
@@ -358,8 +365,13 @@ fastify.get('/email', async(request, reply) => {
     };
     
     transporter.sendMail(mailOptions, (error, info) => {
-      console.log(info);
+      if (error) {
+        console.error("❌ sendMail error:", error);
+      } else {
+        console.log("✅ Email sent:", info);
+      }
     });
+
   }
   
   writeData(totalData, "backup-data.json");
@@ -410,13 +422,7 @@ fastify.post('/updateData', async(request, reply) => {
   return true;
 });
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
-  }
-});
+
 /*fastify.get('/get-name', async(request, reply) => {
   var data = readData();
   const {id} = request.query;
