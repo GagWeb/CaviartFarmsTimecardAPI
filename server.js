@@ -6,6 +6,7 @@ const fetch = require('node-fetch');
 const fs = require('fs');
 const path = require("path");
 const nodemailer = require('nodemailer');
+const app = express();
 require('dotenv').config();
 
 // Require the fastify framework and instantiate it
