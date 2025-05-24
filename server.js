@@ -352,7 +352,7 @@ fastify.get('/email', async(request, reply) => {
 
     const mailOptions = {
       from: process.env.GMAIL_USER,
-      to: "gagechaffee08@gmail.com,
+      to: "gagechaffee08@gmail.com",
       subject: employee + "'s Hours",
       html: "<style>td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}tr:nth-child(even) {background-color: #dddddd;}</style><table style='font-size: 50%; border-collapse: collapse; width: 100%;'><tr><th>In</th><th>Out</th><th>Hours</th></tr>" + htmlContent + "</table><br><br><h2>Total Hours: " + totalHours + "</h2>"
     };
