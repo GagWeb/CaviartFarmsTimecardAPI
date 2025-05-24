@@ -349,29 +349,19 @@ fastify.get('/email', async(request, reply) => {
       htmlContent += "<td>" + (Math.round((Math.round((data[i]["out"] - data[i]["in"]) / 60) / 60) * 10))/10 + "</td></tr>";
       totalHours += (Math.round((Math.round((data[i]["out"] - data[i]["in"]) / 60) / 60) * 10))/10;
     }
-    fetch('/send-email', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ to: "gagechaffee08@gmail.com",
-                           from: "gagechaffee08@gmail.com",
-                           subject: employee + "'s Hours",
-                           html: "<style>td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}tr:nth-child(even) {background-color: #dddddd;}</style><table style='font-size: 50%; border-collapse: collapse; width: 100%;'><tr><th>In</th><th>Out</th><th>Hours</th></tr>" + htmlContent + "</table><br><br><h2>Total Hours: " + totalHours + "</h2>"
-                           })
-    })
-    .then(response => {
-      if (response.ok) {
-        return response.json();
-      } else {
-        throw new Error('API request failed');
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: "gagechaffee08@gmail.com,
+      subject: employee + "'s Hours",
+      html: "<style>td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}tr:nth-child(even) {background-color: #dddddd;}</style><table style='font-size: 50%; border-collapse: collapse; width: 100%;'><tr><th>In</th><th>Out</th><th>Hours</th></tr>" + htmlContent + "</table><br><br><h2>Total Hours: " + totalHours + "</h2>"
+    };
+    
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        return res.status(500).send({ message: 'Error sending email', error });
       }
-    })
-    .then(data => {
-      console.log(data);
-    })
-    .catch(error => {
-      console.error(error);
+      res.send({ message: 'Email sent successfully', info });
     });
   }
   
@@ -430,25 +420,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_PASS
   }
 });
-
-// Route to send emails
-app.post('/send-email', (req, res) => {
-  const { to, subject, text, html } = req.body;
-  const mailOptions = {
-    from: process.env.GMAIL_USER,
-    to,
-    subject,
-    html
-  };
-  console.log(mailOptions);
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      return res.status(500).send({ message: 'Error sending email', error });
-    }
-    res.send({ message: 'Email sent successfully', info });
-  });
-});
-
 /*fastify.get('/get-name', async(request, reply) => {
   var data = readData();
   const {id} = request.query;
