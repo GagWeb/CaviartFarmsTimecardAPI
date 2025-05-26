@@ -75,8 +75,10 @@ fastify.get('/h', async(request, reply) => {
       <head><title>Fastify Page</title></head>
       <body id="document">
         <h1>Clock In / Out</h1><br>
-        <input id="name" placeholder="name" style="font-size: 250%;"><br>
-        <input id="pass" placeholder="password" style="font-size: 250%;"><br>
+        <form id="loginForm">
+          <input id="name" placeholder="name" style="font-size: 250%;"><br>
+          <input id="pass" placeholder="password" style="font-size: 250%;"><br>
+        </form>
         <button id="submit" style="font-size: 400%;">Clock in/out</button>
         <h3 style="color: red;" id="warning"></h3>
         <script>
@@ -124,8 +126,10 @@ fastify.get('/h', async(request, reply) => {
               console.log("Not true");
             }
         document.getElementById("submit").addEventListener("click", login);
-        document.getElementById("name").addEventListener("submit", login);
-        document.getElementById("pass").addEventListener("submit", login);
+        document.getElementById("loginForm").addEventListener("submit", function(e) {
+          e.preventDefault(); // prevent page reload
+          login();
+        });
 
         async function login(){
           document.getElementById("name").value = document.getElementById("name").value.toLocaleLowerCase().replaceAll(" ", "");
