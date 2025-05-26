@@ -123,8 +123,12 @@ fastify.get('/h', async(request, reply) => {
             }else{
               console.log("Not true");
             }
-        document.getElementById("submit").addEventListener("click", async function(){
-          document.getElementById("name").value = document.getElementById("name").value.toLocaleLowerCase();
+        document.getElementById("submit").addEventListener("click", login);
+        document.getElementById("name").addEventListener("submit", login);
+        document.getElementById("pass").addEventListener("submit", login);
+
+        async function login(){
+          document.getElementById("name").value = document.getElementById("name").value.toLocaleLowerCase().replaceAll(" ", "");
           if(localStorage.getItem("loginName") != null && localStorage.getItem("pass") != null){
           var isCorrect = true;
             await fetch('/verify?username=' + document.getElementById("name").value + '&pass=' + document.getElementById("pass").value)
