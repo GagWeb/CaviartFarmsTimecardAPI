@@ -340,7 +340,7 @@ fastify.get('/h', async(request, reply) => {
       </body>
     </html>
   `);
-});
+};
 
 fastify.get('/email', async(request, reply) => {
   var totalData = readData();
