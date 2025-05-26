@@ -72,7 +72,7 @@ fastify.get('/h', async(request, reply) => {
   const {code} = request.query;
   reply.type('text/html').send(`
     <html>
-      <head><title>Fastify Page</title></head>
+      <head><title>Clock In/Out</title></head>
       <body id="document">
         <h1>Clock In / Out</h1><br>
         <form id="loginForm">
