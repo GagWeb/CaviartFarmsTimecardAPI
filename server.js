@@ -129,7 +129,7 @@ fastify.get('/h', async(request, reply) => {
 
         async function login(){
           document.getElementById("name").value = document.getElementById("name").value.toLocaleLowerCase().replaceAll(" ", "");
-          document.getElementById("pass").value = document.getElementById("pass").replaceAll(" ", "");
+          document.getElementById("pass").value = document.getElementById("pass").value.replaceAll(" ", "");
           if(localStorage.getItem("loginName") != null && localStorage.getItem("pass") != null){
           var isCorrect = true;
             await fetch('/verify?username=' + document.getElementById("name").value + '&pass=' + document.getElementById("pass").value)
