@@ -15,6 +15,12 @@ const transporter = nodemailer.createTransport({
 });
 const express = require('express');
 const app = express();
+const axios = require('axios');
+
+const PANTRY_ID = 'bba6023d-25bc-4317-a973-a0fc6de534b7'; // from getpantry.cloud
+const BASKET = 'CaviartFarmsTimecardAPI'; // your basket name
+const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
+
 require('dotenv').config();
 
 // Require the fastify framework and instantiate it
@@ -48,19 +54,25 @@ fastify.register(require("@fastify/view"), {
 });
 
 
-function readData(file='data.json') {
-  const raw = fs.readFileSync(path.join(__dirname, file));
-  return JSON.parse(raw);
-  
+async function readData() {
+  try {
+    const res = await axios.get(BASE_URL);
+    return res.data;
+  } catch (err) {
+    console.error("Failed to read from Pantry:", err.message);
+    return null;
+  }
 }
 
-// Save data to file
-function writeData(data, file="data.json") {
-  fs.writeFileSync(
-    path.join(__dirname, file),
-    JSON.stringify(data, null, 2)
-  );
+async function writeData(data) {
+  try {
+    await axios.put(BASE_URL, data);
+    console.log("Pantry updated.");
+  } catch (err) {
+    console.error("Failed to update Pantry:", err.message);
+  }
 }
+
 
 function formatData(obj) {
   return JSON.stringify(obj, null, 2);
@@ -178,7 +190,7 @@ fastify.get('/h', async(request, reply) => {
             });
 
             if(isCorrect == true){
-            var data = ${formatData(readData())};
+            var data = ${formatData(await readData())};
             console.log(data);
               var name = document.getElementById("name").value;
               console.log(name);
@@ -290,7 +302,7 @@ fastify.get('/h', async(request, reply) => {
               localStorage.setItem("loginName", document.getElementById("name").value);
               localStorage.setItem("pass", document.getElementById("pass").value);
               
-              var data = ${formatData(readData())};
+              var data = ${formatData(await readData())};
               console.log(data);
               var name = document.getElementById("name").value;
               if(data[name] == null) {
@@ -348,7 +360,7 @@ fastify.get('/h', async(request, reply) => {
 });
 
 fastify.get('/email', async(request, reply) => {
-  var totalData = readData();
+  var totalData = await readData();
   var employee;
   var keys = Object.keys(totalData);
   var data;
@@ -384,25 +396,22 @@ fastify.get('/email', async(request, reply) => {
 
   }
   
-  writeData(totalData, "backup-data.json");
+  await writeData(totalData, "backup-data.json");
   var newData = totalData;
   for(var i = 0; i < keys.length; i++){
     newData[keys[i]]["hours"] = new Array();
   }
-  writeData(newData, "data.json");
+  await writeData(newData, "data.json");
   
 });
 
 fastify.get('/data.json', async(request, reply) => {
-  return readData();
-});
-fastify.get('/backup-data.json', async(request, reply) => {
-  return readData('backup-data.json');
+  return await readData();
 });
 
 fastify.get('/verify', async(request, reply) => {
   const {username, pass} = request.query;
-  var data = readData();
+  var data = await readData();
   console.log(pass + " | " + sha256(pass) + " | " + data[username]["pass"] + " | " + (data[username]["pass"] == sha256(pass)));
   if(data[username] == null){
     return false;
@@ -428,17 +437,9 @@ fastify.get('/timecheck', async(request, reply) => {
 
 fastify.post('/updateData', async(request, reply) => {
   const {data} = request.body;
-  writeData(data);
+  await writeData(data);
   return true;
 });
-
-
-/*fastify.get('/get-name', async(request, reply) => {
-  var data = readData();
-  const {id} = request.query;
-  return data[id][0];
-});*/
-
 
 
 
