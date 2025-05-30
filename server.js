@@ -64,9 +64,9 @@ async function readData() {
   }
 }
 
-async function writeData(data) {
+async function writeData(data, url = BASE_URL) {
   try {
-    await axios.put(BASE_URL, data);
+    await axios.put(url, data);
     console.log("Pantry updated.");
   } catch (err) {
     console.error("Failed to update Pantry:", err.message);
@@ -396,12 +396,12 @@ fastify.get('/email', async(request, reply) => {
 
   }
   
-  await writeData(totalData, "backup-data.json");
+  await writeData(totalData, `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/Backup`);
   var newData = totalData;
   for(var i = 0; i < keys.length; i++){
     newData[keys[i]]["hours"] = new Array();
   }
-  await writeData(newData, "data.json");
+  await writeData(newData);
   
 });
 
