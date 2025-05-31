@@ -54,13 +54,36 @@ fastify.register(require("@fastify/view"), {
 });
 
 
-async function readData() {
+// Max number of retries if 429 is received
+const MAX_RETRIES = 3;
+
+// Delay helper (in ms)
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function readData(retries = 0) {
   try {
     const res = await axios.get(BASE_URL);
     return res.data;
   } catch (err) {
-    console.error("Failed to read from Pantry:", err.message);
-    return null;
+    if (err.response && err.response.status === 429) {
+      if (retries >= MAX_RETRIES) {
+        console.error(`Rate limit hit. Tried ${MAX_RETRIES} times. Giving up.`);
+        return null;
+      }
+
+      const retryAfter = err.response.headers['retry-after']
+        ? parseInt(err.response.headers['retry-after'], 10) * 1000
+        : 30000; // default to 30 seconds
+
+      console.warn(`429 Too Many Requests. Retrying in ${retryAfter / 1000}s...`);
+      await sleep(retryAfter);
+      return readData(retries + 1);
+    } else {
+      console.error("Failed to read from Pantry:", err.message);
+      return null;
+    }
   }
 }
 
