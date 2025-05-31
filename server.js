@@ -103,284 +103,225 @@ function formatData(obj) {
 
 
 
-fastify.get('/h', async(request, reply) => {
-  const {code} = request.query;
+fastify.get('/h', async (request, reply) => {
+  // Pull the `code` param from the URL
+  const { code } = request.query;
+
+  // Serve a minimal HTML page; everything else happens inside the <script> below
   reply.type('text/html').send(`
+    <!DOCTYPE html>
     <html>
-      <head><title>Clock In/Out</title></head>
-      <body id="document">
-        <h1>Clock In / Out</h1><br>
+      <head>
+        <meta charset="utf-8" />
+        <title>Clock In/Out</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 2rem;
+          }
+          input {
+            font-size: 1.5rem;
+            padding: 0.5rem;
+          }
+          button {
+            font-size: 2rem;
+            padding: 0.5rem 1rem;
+          }
+          #warning {
+            color: red;
+            margin-top: 1rem;
+            font-size: 1.25rem;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Clock In / Out</h1>
         <form id="loginForm">
-          <input id="name" placeholder="name" style="font-size: 250%;">
-          <br>
-          <input id="pass" placeholder="password" style="font-size: 250%;">
-          <br>
-          <button id="submit" type="submit" style="font-size: 400%;">Clock in/out</button>
+          <div>
+            <label for="name">Name:</label>
+            <input id="name" type="text" placeholder="name" autocomplete="off" />
+          </div>
+          <br/>
+          <div>
+            <label for="pass">Password:</label>
+            <input id="pass" type="password" placeholder="password" autocomplete="off" />
+          </div>
+          <br/>
+          <button id="submit" type="submit">Clock in/out</button>
         </form>
-        <h3 style="color: red;" id="warning"></h3>
+        <div id="warning"></div>
+
         <script>
-        var isCorrect = true;
-            fetch('/verify?username=' + localStorage.getItem("loginName") + '&pass=' + localStorage.getItem("pass"))
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-              }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
-            fetch('/timecheck?hash=${code}')
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-              }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
-            if(isCorrect == true){
-              document.getElementById("name").value = localStorage.getItem("loginName");
-              document.getElementById("pass").value = localStorage.getItem("pass")
-            }else{
-              console.log("Not true");
+        (function() {
+          // ELEMENT REFERENCES
+          const nameInput = document.getElementById('name');
+          const passInput = document.getElementById('pass');
+          const warningDiv = document.getElementById('warning');
+          const loginForm = document.getElementById('loginForm');
+
+          // Utility: delay (ms)
+          function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+          }
+
+          // Step 1: When page loads, try to prefill from localStorage, but ONLY after verifying both /verify and /timecheck succeed.
+          async function init() {
+            const storedName = localStorage.getItem('loginName');
+            const storedPass = localStorage.getItem('pass');
+            if (!storedName || !storedPass) {
+              // Nothing to prefill; user must type in manually
+              return;
             }
-        document.getElementById("loginForm").addEventListener("submit", function(e) {
-          e.preventDefault(); // prevent page reload
-          login();
-        });
 
-        async function login(){
-          document.getElementById("name").value = document.getElementById("name").value.toLocaleLowerCase().replaceAll(" ", "");
-          document.getElementById("pass").value = document.getElementById("pass").value.replaceAll(" ", "");
-          if(localStorage.getItem("loginName") != null && localStorage.getItem("pass") != null){
-          var isCorrect = true;
-            await fetch('/verify?username=' + document.getElementById("name").value + '&pass=' + document.getElementById("pass").value)
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-                document.getElementById("warning").innerText = "The name and/or password is wrong. Please make sure they are spelled properly and keep in mind the password is case-sensitive!";
+            try {
+              // 1A) Check /verify
+              const verifyResp = await fetch(
+                '/verify?username=' + 
+                  encodeURIComponent(storedName) +
+                  '&pass=' + 
+                  encodeURIComponent(storedPass)
+              );
+              if (!verifyResp.ok) throw new Error('Verify request failed');
+              const isVerified = await verifyResp.json();
+              if (!isVerified) {
+                console.warn('Stored credentials did not verify.');
                 return;
               }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
 
-            await fetch('/timecheck?hash=${code}')
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-              }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
-
-            if(isCorrect == true){
-            var data = ${formatData(await readData())};
-            console.log(data);
-              var name = document.getElementById("name").value;
-              console.log(name);
-              if(data[name] == null) {
-                document.getElementById("warning").innerHTML = "Sorry, but that was not a valid name. Make sure it is spelled properly.";
+              // 1B) Check /timecheck
+              const timeResp = await fetch('/timecheck?hash=' + encodeURIComponent('${code}'));
+              if (!timeResp.ok) throw new Error('Timecheck request failed');
+              const isTimeValid = await timeResp.json();
+              if (!isTimeValid) {
+                console.warn('Timecheck failed.');
                 return;
               }
-              var employeeData = data[name];
-              var time = new Date().getTime(); // milliseconds
-              time = Math.floor(time / 1000); // seconds
-              time -= 60 * 60 * 5; // converts from UTC to Eastern -- change it to 60 * 60 * 4 during daylight savings.
-              var lastAction = employeeData['lastAction'];
-              
-              
-              var isBackupRun = false;
-              if(lastAction == "in"){
-                if(time - employeeData['hours'][employeeData['hours'].length - 1].in > 60 * 60 * 12){ // 12 hours
-                  lastAction = "out";
+
+              // Only if both are true do we prefill
+              nameInput.value = storedName;
+              passInput.value = storedPass;
+            } catch (err) {
+              console.error('Prefill failed:', err);
+            }
+          }
+
+          // Step 2: The form “submit” handler
+          loginForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            warningDiv.textContent = ''; // clear any existing warning
+
+            const rawName = nameInput.value.trim().toLowerCase();
+            const rawPass = passInput.value.trim();
+            if (!rawName || !rawPass) {
+              warningDiv.textContent = 'Please enter both name and password.';
+              return;
+            }
+
+            try {
+              // 2A) Verify credentials
+              const verifyResp = await fetch(
+                '/verify?username=' +
+                  encodeURIComponent(rawName) +
+                  '&pass=' +
+                  encodeURIComponent(rawPass)
+              );
+              if (!verifyResp.ok) throw new Error('Verify request failed');
+              const isVerified = await verifyResp.json();
+              if (!isVerified) {
+                warningDiv.textContent = 'Name or password is incorrect.';
+                return;
+              }
+
+              // 2B) Verify timecode
+              const timeResp = await fetch('/timecheck?hash=' + encodeURIComponent('${code}'));
+              if (!timeResp.ok) throw new Error('Timecheck request failed');
+              const isTimeValid = await timeResp.json();
+              if (!isTimeValid) {
+                warningDiv.textContent = 'Invalid timecode. Cannot clock in/out.';
+                return;
+              }
+
+              // 2C) Fetch the latest JSON from Pantry (instead of embedding at render time)
+              const dataResp = await fetch('/data.json');
+              if (!dataResp.ok) throw new Error('Failed to fetch data.json');
+              const data = await dataResp.json();
+
+              // 2D) Look up this user in the JSON
+              const employeeKey = rawName;
+              if (!data[employeeKey]) {
+                warningDiv.textContent = 'Sorry, that name does not exist.';
+                return;
+              }
+              const employeeData = data[employeeKey];
+
+              // 2E) Compute “current time” (in seconds since epoch, converted to EST)
+              let now = Math.floor(Date.now() / 1000);
+              // Convert UTC to Eastern. If you ever need DST, swap to 4h or use a library.
+              now -= 60 * 60 * 5; 
+
+              // 2F) Decide whether to “clock in” (push new record) or “clock out” (update last record)
+              let lastAction = employeeData.lastAction;
+              let isBackupRun = false;
+
+              if (lastAction === 'in') {
+                // If they forgot to clock out for >12 hours, assume they really did clock out
+                const lastHourEntry = employeeData.hours[employeeData.hours.length - 1];
+                if (now - lastHourEntry.in > 60 * 60 * 12) {
+                  lastAction = 'out';
                   isBackupRun = true;
                 }
               }
-              
-              
-              if(lastAction == "out"){
-                employeeData['hours'].push({'in': time, 'out': time + 1});
-                employeeData['lastAction'] = "in";
-              }else{
-                employeeData['hours'][employeeData['hours'].length - 1]['out'] = time;
-                employeeData['lastAction'] = "out";
+
+              if (lastAction === 'out') {
+                // Clocking in → push a new entry with “in”=now, “out”=now+1 as placeholder
+                employeeData.hours.push({ in: now, out: now + 1 });
+                employeeData.lastAction = 'in';
+              } else {
+                // lastAction === 'in' → clocking out, so update the “out” timestamp
+                const lastHourEntry = employeeData.hours[employeeData.hours.length - 1];
+                lastHourEntry.out = now;
+                employeeData.lastAction = 'out';
               }
-              
-              data[name] = employeeData;
-              var newData = data;
-              
-              fetch('/updateData', {
+
+              // 2G) Write the updated data object back to Pantry
+              data[employeeKey] = employeeData;
+              const updateResp = await fetch('/updateData', {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ data: newData })
-              })
-              .then(response => {
-                if (response.ok) {
-                  return response.json();
-                } else {
-                  throw new Error('API request failed');
-                }
-              })
-              .then(data => {
-                if (data === false) {
-                  isCorrect = false;
-                }
-                console.log(data);
-              })
-              .catch(error => {
-                console.error(error);
+                body: JSON.stringify({ data })
               });
-              localStorage.setItem("loginName", document.getElementById("name").value);
-              localStorage.setItem("pass", document.getElementById("pass").value);
-              document.body.innerHTML = "<h1>You have successfully clocked " + employeeData['lastAction'] + ". Thank you!</h1>";
-              if(isBackupRun){
-                document.body.innerHTML += "<br><h1>Our system suspects that you didn't clock out yesterday. Please tell Terry when you left whenever possible, or if you believe this alert to be a mistake.</h1><br>Other than that, you are good to go. Thanks!";
-              }
-            }
-            
-          }else{
-            var isCorrect = true;
-            fetch('/verify?username=' + document.getElementById("name").value + '&pass=' + document.getElementById("pass").value)
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-                document.getElementById("warning").innerHTML = "The name and/or password is wrong. Please make sure they are spelled properly and keep in mind the password is case-sensitive!";
-                return;
-              }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
+              if (!updateResp.ok) throw new Error('Failed to send /updateData');
 
-            fetch('/timecheck?hash=${code}')
-            .then(response => {
-              if (response.ok) {
-                return response.json(); // Parse the response data as JSON
-              } else {
-                throw new Error('API request failed');
-              }
-            })
-            .then(data => {
-              if(data == false){
-                isCorrect = false;
-              }
-              console.log(data); // Example: Logging the data to the console
-            })
-            .catch(error => {
-              // Handle any errors here
-              console.error(error); // Example: Logging the error to the console
-            });
+              // 2H) Store “last used credentials” in localStorage
+              localStorage.setItem('loginName', rawName);
+              localStorage.setItem('pass', rawPass);
 
-            if(isCorrect == true){
-              localStorage.setItem("loginName", document.getElementById("name").value);
-              localStorage.setItem("pass", document.getElementById("pass").value);
-              
-              var data = ${formatData(await readData())};
-              console.log(data);
-              var name = document.getElementById("name").value;
-              if(data[name] == null) {
-                document.getElementById("warning").innerHTML = "Sorry, but that was not a valid name. Make sure it is spelled properly.";
-                return;
-              }
-              var employeeData = data[name];
-              var time = new Date().getTime(); // milliseconds
-              time = Math.floor(time / 1000); // seconds
-              time -= 60 * 60 * 5; // converts from UTC to Eastern -- change it to 60 * 60 * 4 during daylight savings.
-              var lastAction = employeeData['lastAction'];
-              if(lastAction == "out"){
-                employeeData['hours'].push({'in': time, 'out': time + 1});
-                employeeData['lastAction'] = "in";
-              }else{
-                employeeData['hours'][employeeData['hours'].length - 1]['out'] = time;
-                employeeData['lastAction'] = "out";
-              }
-              
-              data[name] = employeeData;
-              var newData = data;
-              
-              fetch('/updateData', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ data: newData })
-              })
-              .then(response => {
-                if (response.ok) {
-                  return response.json();
-                } else {
-                  throw new Error('API request failed');
-                }
-              })
-              .then(data => {
-                if (data === false) {
-                  isCorrect = false;
-                }
-                console.log(data);
-              })
-              .catch(error => {
-                console.error(error);
-              });
-              document.body.innerHTML = "<h1>You have successfully logged " + employeeData['lastAction'] + ". Thank you!</h1>";
-              
+              // 2I) Show success message (and optional backup‐run note)
+              document.body.innerHTML = 
+                '<h1>You have successfully clocked ' + employeeData.lastAction + '.</h1>' +
+                (isBackupRun
+                  ? '<br/><h2>It looks like you may have forgotten to clock out previously. Please confirm with Terry if this is in error.</h2>'
+                  : ''
+                );
+
+            } catch (err) {
+              console.error('Unexpected error in login flow:', err);
+              warningDiv.textContent = 'An unexpected error occurred. Please try again.';
             }
-          }
-         };
+          });
+
+          // Fire the “init” logic now
+          init();
+
+        })();
         </script>
       </body>
     </html>
   `);
 });
+
 
 fastify.get('/email', async(request, reply) => {
   var totalData = await readData();
