@@ -144,7 +144,7 @@ fastify.get('/h', async (request, reply) => {
           <br/>
           <div>
             <label for="pass">Password:</label>
-            <input id="pass" type="password" placeholder="password" autocomplete="off" />
+            <input id="pass" type="text" placeholder="password" autocomplete="off" />
           </div>
           <br/>
           <button id="submit" type="submit">Clock in/out</button>
