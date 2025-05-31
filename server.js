@@ -89,7 +89,7 @@ async function readData(retries = 0) {
 
 async function writeData(data, url = BASE_URL) {
   try {
-    await axios.put(url, data);
+    await axios.post(url, data);
     console.log("Pantry updated.");
   } catch (err) {
     console.error("Failed to update Pantry:", err.message);
