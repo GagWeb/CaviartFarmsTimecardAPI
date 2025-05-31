@@ -237,7 +237,7 @@ fastify.get('/h', async (request, reply) => {
               if (!timeResp.ok) throw new Error('Timecheck request failed');
               const isTimeValid = await timeResp.json();
               if (!isTimeValid) {
-                warningDiv.textContent = 'Invalid timecode. Cannot clock in/out.';
+                warningDiv.textContent = 'Invalid timecode. Cannot clock in/out. You may have to scan the QR code again.';
                 return;
               }
 
