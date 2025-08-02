@@ -54,38 +54,92 @@ fastify.register(require("@fastify/view"), {
 });
 
 
-// Max number of retries if 429 is received
-const MAX_RETRIES = 3;
+// === CONFIGURATION ===
+const BASE_URL     = 'https://caviartfarmstimecardapi.onrender.com/h';
+const MAX_RETRIES  = 3;       // how many times to retry on 429
+const DEBOUNCE_MS  = 300;     // hold-off before firing a new request
 
-// Delay helper (in ms)
+// === UTILITY FUNCTIONS ===
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function readData(retries = 0) {
-  try {
-    const res = await axios.get(BASE_URL);
-    return res.data;
-  } catch (err) {
-    if (err.response && err.response.status === 429) {
-      if (retries >= MAX_RETRIES) {
-        console.error(`Rate limit hit. Tried ${MAX_RETRIES} times. Giving up.`);
-        return null;
+// simple debounce (if you don’t want to pull in lodash.debounce)
+function debounce(fn, wait) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), wait);
+  };
+}
+
+// detect iOS Safari (including iPadOS)
+const ua = navigator.userAgent || '';
+const isIOS_Safari = /Safari/.test(ua) && /iPhone|iPad|iPod/.test(ua);
+
+// === CLIENT-SIDE CACHING / DEDUPLICATION STATE ===
+let inFlightPromise = null;
+let lastETag        = null;
+
+// === PUBLIC API ===
+// call readData(); multiple calls within DEBOUNCE_MS will collapse
+const readData = debounce(() => _readDataWithRetries(), DEBOUNCE_MS);
+
+// === INTERNAL WORKHORSE ===
+async function _readDataWithRetries(retries = 0) {
+  // 1) Deduplicate: if there’s already a call in progress, return it
+  if (inFlightPromise) {
+    return inFlightPromise;
+  }
+
+  // 2) Kick off the actual request
+  inFlightPromise = (async () => {
+    try {
+      // 3) Conditional cache header
+      const headers = {};
+      if (lastETag) {
+        headers['If-None-Match'] = lastETag;
       }
 
-      const retryAfter = err.response.headers['retry-after']
-        ? parseInt(err.response.headers['retry-after'], 10) * 1000
-        : 30000; // default to 30 seconds
+      const res = await axios.get(BASE_URL, { headers });
 
-      console.warn(`429 Too Many Requests. Retrying in ${retryAfter / 1000}s...`);
-      await sleep(retryAfter);
-      return readData(retries + 1);
-    } else {
-      console.error("Failed to read from Pantry:", err.message);
-      return null;
+      // 4) Handle 304 Not Modified
+      if (res.status === 304) {
+        return null; // no new data
+      }
+
+      // 5) Store new ETag for next time
+      if (res.headers.etag) {
+        lastETag = res.headers.etag;
+      }
+
+      return res.data;
+    } catch (err) {
+      const status = err.response?.status;
+
+      // 6) Rate-limit retry logic
+      if (status === 429 && retries < MAX_RETRIES) {
+        // read server’s Retry-After or pick a base delay
+        const serverDelay = parseInt(err.response.headers['retry-after'] || '0', 10) * 1000;
+        const baseDelay   = isIOS_Safari ? 60000 : 30000; // slower back-off on iOS Safari
+        const delay       = serverDelay > 0 ? serverDelay : baseDelay;
+
+        console.warn(`429 hit (Safari? ${isIOS_Safari}). retry #${retries+1} in ${delay/1000}s`);
+        await sleep(delay);
+        return _readDataWithRetries(retries + 1);
+      }
+
+      // 7) Bubble up any other errors
+      throw err;
+    } finally {
+      // 8) Clear the in-flight marker no matter what
+      inFlightPromise = null;
     }
-  }
+  })();
+
+  return inFlightPromise;
 }
+
 
 async function writeData(data, url = BASE_URL) {
   try {
