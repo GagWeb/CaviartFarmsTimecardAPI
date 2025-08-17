@@ -26,7 +26,7 @@ require('dotenv').config();
 // Require the fastify framework and instantiate it
 const fastify = require("fastify")({
   // Set this to true for detailed logging:
-  logger: false,
+  logger: true,
 });
 
 const crypto = require('crypto');
