@@ -35,35 +35,283 @@ const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BAS
 
 
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const originalEnd = res.end;
+// ====== DEBUG LOGGING ENHANCEMENTS (paste near top) ======
 
+// config
+const DEBUG = true; // flip to false to quickly quiet these logs
+const BURST_THRESHOLD = 10; // requests
+const BURST_WINDOW_MS = 10 * 1000; // window to count burst (10s)
+const COUNTER_CLEANUP_MS = 60 * 1000; // cleanup interval for counters
+
+// small logger helper
+function log(level, reqId, ...args) {
+  if (!DEBUG) return;
+  const prefix = `[${new Date().toISOString()}] [${level}]${reqId ? ' [' + reqId + ']' : ''}`;
+  console.log(prefix, ...args);
+}
+function warn(reqId, ...args) { log('WARN', reqId, ...args); }
+function info(reqId, ...args) { log('INFO', reqId, ...args); }
+function errorLog(reqId, ...args) { log('ERROR', reqId, ...args); }
+
+// mask helper for sensitive values
+function mask(val) {
+  if (val == null) return val;
+  const s = String(val);
+  if (s.length <= 8) return '****';
+  return s.slice(0,4) + '...' + s.slice(-3);
+}
+
+// Per-IP request tracker for burst detection
+const ipCounters = new Map();
+function recordIpRequest(ip) {
+  const now = Date.now();
+  if (!ipCounters.has(ip)) ipCounters.set(ip, []);
+  ipCounters.get(ip).push(now);
+  // trim to window
+  const windowStart = now - BURST_WINDOW_MS;
+  const arr = ipCounters.get(ip).filter(t => t >= windowStart);
+  ipCounters.set(ip, arr);
+  return arr.length;
+}
+// periodic cleanup to avoid memory growth
+setInterval(() => {
+  const cutoff = Date.now() - COUNTER_CLEANUP_MS;
+  for (const [ip, arr] of ipCounters.entries()) {
+    const trimmed = arr.filter(t => t >= cutoff);
+    if (trimmed.length === 0) ipCounters.delete(ip);
+    else ipCounters.set(ip, trimmed);
+  }
+}, COUNTER_CLEANUP_MS);
+
+// Express-level inline middleware (you already have one; this augments it — paste after your current app.use logger)
+app.use((req, res, next) => {
+  const reqId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.floor(Math.random()*1000);
+  const start = Date.now();
+  const ip = req.ip || req.headers['x-forwarded-for'] || req.connection && req.connection.remoteAddress;
+
+  // record IP burst count
+  const ipCount = recordIpRequest(ip);
+  if (ipCount >= BURST_THRESHOLD) {
+    warn(reqId, `Burst detected from IP=${ip}. ${ipCount} reqs in last ${Math.round(BURST_WINDOW_MS/1000)}s`);
+  }
+
+  info(reqId, 'Incoming EXPRESS request', {
+    method: req.method,
+    url: req.originalUrl,
+    ip,
+    httpVersion: req.httpVersion,
+    ua: req.headers && req.headers['user-agent'],
+    accept: req.headers && req.headers.accept,
+    cookie: req.headers && (req.headers.cookie ? mask(req.headers.cookie) : undefined),
+  });
+
+  const originalEnd = res.end;
   res.end = function (...args) {
     const duration = Date.now() - start;
-
-    console.log("---- Safari Debug Log ----");
-    console.log("Time:", new Date().toISOString());
-    console.log("Method:", req.method);
-    console.log("URL:", req.originalUrl);
-    console.log("IP:", req.ip);
-    console.log("HTTP Version:", req.httpVersion);
-    console.log("Headers:", req.headers);
-    if (Object.keys(req.query).length) {
-      console.log("Query Params:", req.query);
-    }
-    if (req.body && Object.keys(req.body).length) {
-      console.log("Body:", req.body);
-    }
-    console.log("Response Code:", res.statusCode);
-    console.log("Duration (ms):", duration);
-    console.log("--------------------------");
-
+    info(reqId, `Express response`, {
+      statusCode: res.statusCode,
+      durationMs: duration,
+      contentLength: res.getHeader && res.getHeader('content-length'),
+    });
     originalEnd.apply(res, args);
   };
 
+  // attach reqId for downstream logs
+  req._reqId = reqId;
   next();
 });
+
+// Fastify hooks (put these after you create `fastify` and before routes)
+fastify.addHook('onRequest', async (request, reply) => {
+  const reqId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.floor(Math.random()*1000);
+  request.logId = reqId;
+  const ip = request.ip || request.raw && (request.raw.headers['x-forwarded-for'] || request.raw.connection.remoteAddress);
+  const headers = request.headers || {};
+  // record ip burst
+  const ipCount = recordIpRequest(ip);
+  if (ipCount >= BURST_THRESHOLD) {
+    warn(reqId, `Burst detected from IP=${ip}. ${ipCount} reqs in last ${Math.round(BURST_WINDOW_MS/1000)}s`);
+  }
+
+  info(reqId, 'Incoming FASTIFY request', {
+    method: request.method,
+    url: request.url,
+    ip,
+    ua: headers['user-agent'],
+    accept: headers.accept,
+    cookie: headers.cookie ? mask(headers.cookie) : undefined,
+  });
+});
+
+fastify.addHook('onResponse', async (request, reply) => {
+  const reqId = request.logId || 'no-id';
+  info(reqId, 'Fastify response', {
+    url: request.url,
+    statusCode: reply.statusCode,
+    durationMs: (reply.getResponseTime && typeof reply.getResponseTime === 'function') ? reply.getResponseTime() : undefined,
+  });
+});
+
+// Axios interceptors (logs all outgoing requests + responses)
+axios.interceptors.request.use(cfg => {
+  const reqId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+  cfg.headers = cfg.headers || {};
+  cfg.headers['X-Debug-ReqId'] = reqId; // helps correlate
+  info(reqId, 'AXIOS Request', {
+    method: cfg.method,
+    url: cfg.url,
+    timeout: cfg.timeout,
+    headersSnapshot: {
+      'User-Agent': cfg.headers['User-Agent'] || cfg.headers['user-agent'],
+      'Content-Type': cfg.headers['Content-Type'] || cfg.headers['content-type'],
+    },
+    dataLength: cfg.data ? (typeof cfg.data === 'string' ? cfg.data.length : JSON.stringify(cfg.data).length) : 0
+  });
+  // attach reqId so response interceptor can use it
+  cfg._reqId = reqId;
+  return cfg;
+}, err => {
+  errorLog('axios-req', 'AXIOS request error', err && err.message);
+  return Promise.reject(err);
+});
+
+axios.interceptors.response.use(resp => {
+  const reqId = resp.config && resp.config._reqId ? resp.config._reqId : 'axios-resp';
+  info(reqId, 'AXIOS Response', {
+    url: resp.config && resp.config.url,
+    status: resp.status,
+    statusText: resp.statusText,
+    headersSample: {
+      'content-length': resp.headers && resp.headers['content-length'],
+      'retry-after': resp.headers && resp.headers['retry-after']
+    },
+    dataLength: resp.data ? (typeof resp.data === 'string' ? resp.data.length : JSON.stringify(resp.data).length) : 0
+  });
+  return resp;
+}, err => {
+  const resp = err && err.response;
+  const reqId = err && err.config && err.config._reqId ? err.config._reqId : 'axios-err';
+  if (resp && resp.status === 429) {
+    warn(reqId, 'AXIOS got 429', {
+      url: err.config && err.config.url,
+      'retry-after': resp.headers && resp.headers['retry-after'],
+      status: resp.status,
+      bodySample: resp.data ? (typeof resp.data === 'string' ? resp.data.slice(0,200) : JSON.stringify(resp.data).slice(0,200)) : undefined
+    });
+  } else {
+    errorLog(reqId, 'AXIOS error', {
+      message: err.message,
+      url: err.config && err.config.url,
+      status: resp && resp.status
+    });
+  }
+  return Promise.reject(err);
+});
+
+// Instrument readData and writeData (replace existing ones or augment them)
+async function readData(retries = 0) {
+  const reqId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+  info(reqId, `readData attempt #${retries}`, { url: BASE_URL });
+  try {
+    const res = await axios.get(BASE_URL, { headers: { 'X-Local-ReqId': reqId } });
+    info(reqId, 'readData success', { status: res.status, contentLength: res.headers['content-length'] });
+    return res.data;
+  } catch (err) {
+    const resp = err && err.response;
+    if (resp && resp.status === 429) {
+      const retryAfterHeader = resp.headers && (resp.headers['retry-after'] || resp.headers['Retry-After']);
+      const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : 30000;
+      warn(reqId, `readData 429: retrying after ${retryAfter / 1000}s (attempt ${retries + 1})`, {
+        headers: resp.headers,
+        bodySample: resp.data ? (typeof resp.data === 'string' ? resp.data.slice(0,200) : JSON.stringify(resp.data).slice(0,200)) : undefined
+      });
+      if (retries >= MAX_RETRIES) {
+        errorLog(reqId, `readData gave up after ${MAX_RETRIES} retries`);
+        return null;
+      }
+      await sleep(retryAfter);
+      return readData(retries + 1);
+    } else {
+      errorLog(reqId, 'readData failed', { message: err.message, stack: err.stack ? err.stack.split('\n')[0] : undefined });
+      return null;
+    }
+  }
+}
+
+async function writeData(data, url = BASE_URL) {
+  const reqId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString();
+  const dataLen = data ? (typeof data === 'string' ? data.length : JSON.stringify(data).length) : 0;
+  info(reqId, 'writeData start', { url, dataLength: dataLen });
+  try {
+    const res = await axios.post(url, data, { headers: { 'Content-Type': 'application/json', 'X-Local-ReqId': reqId } });
+    info(reqId, 'writeData success', { status: res.status, statusText: res.statusText });
+  } catch (err) {
+    errorLog(reqId, 'writeData failed', { message: err.message, stack: err.stack ? err.stack.split('\n')[0] : undefined });
+  }
+}
+
+// Nodemailer: augment existing send callback logging (you already had transporter.sendMail inside /email)
+// in that callback ensure we log accepted/rejected/messageId
+// e.g.
+// transporter.sendMail(mailOptions, (error, info) => {
+//   if (error) {
+//     console.error("❌ sendMail error:", error);
+//   } else {
+//     console.log("✅ Email sent:", info);
+//   }
+// });
+// (existing code already logs; the above is confirmation to keep messageId etc.)
+
+// Route-specific logging suggestions
+// inside /verify (fastify.get('/verify'...)) augment to log:
+//   - request received with username (masked), request.ip, computed sha256 vs stored hash (mask the full hash)
+//
+// e.g. replace your console.log(pass + " | " + sha256(pass) + " | " + data[username]["pass"] + " | " + (data[username]["pass"] == sha256(pass)));
+// with:
+  // const computed = sha256(pass);
+  // info(request.logId, '/verify', { username: username ? username.slice(0,3) + '...' : undefined, passMask: mask(pass), computedHashSample: computed.slice(0,8) });
+  // if (!data[username]) { warn(request.logId, '/verify missing user', { username }); return false; }
+  // info(request.logId, '/verify result', { match: data[username]["pass"] === computed });
+
+// inside /timecheck log the computed hash and whether it matched (but do not log secret)
+  // info(request.logId, '/timecheck', { providedHash: mask(hash), computedSample: computed.slice(0,8), result: hash === computed });
+
+// inside /updateData log the body size and which keys changed
+  // info(request.logId, '/updateData', { bodyLength: JSON.stringify(request.body).length });
+  // if request.body && request.body.data then log Object.keys(request.body.data).slice(0,20)
+
+// /data.json: log that a client requested data.json and whether readData returned null
+
+// /h (the HTML endpoint) - log page render requests and the incoming code param
+  // info(request.logId, '/h render', { code: request.query && request.query.code ? mask(request.query.code) : undefined });
+
+// Example small helpers to place inside routes (use these wherever you want)
+function routeInfo(request, label, obj) {
+  const id = (request && request.logId) || (request && request._reqId) || 'route';
+  info(id, label, obj);
+}
+function routeWarn(request, label, obj) {
+  const id = (request && request.logId) || (request && request._reqId) || 'route';
+  warn(id, label, obj);
+}
+
+// Global process-level logs
+process.on('unhandledRejection', (reason, p) => {
+  errorLog('process', 'Unhandled Rejection at Promise', { reason: reason && reason.stack ? reason.stack.split('\n')[0] : reason });
+});
+process.on('uncaughtException', (err) => {
+  errorLog('process', 'Uncaught Exception', { message: err && err.message, stack: err && err.stack ? err.stack.split('\n')[0] : undefined });
+  // Consider process.exit(1) in production after logging
+});
+process.on('SIGINT', () => {
+  info('process', 'SIGINT received — shutting down gracefully');
+  process.exit(0);
+});
+process.on('SIGTERM', () => {
+  info('process', 'SIGTERM received — shutting down gracefully');
+  process.exit(0);
+});
+
 
 
 
