@@ -21,7 +21,19 @@ const PANTRY_ID = 'bba6023d-25bc-4317-a973-a0fc6de534b7'; // from getpantry.clou
 const BASKET = 'CaviartFarmsTimecardAPI'; // your basket name
 const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
 
+require('dotenv').config();
 
+// Require the fastify framework and instantiate it
+const fastify = require("fastify")({
+  // Set this to true for detailed logging:
+  logger: true,
+});
+
+const crypto = require('crypto');
+
+function sha256(message) {
+  return crypto.createHash('sha256').update(message).digest('hex');
+}
 
 
 
@@ -332,19 +344,7 @@ process.on('SIGTERM', () => {
 
 
 
-require('dotenv').config();
 
-// Require the fastify framework and instantiate it
-const fastify = require("fastify")({
-  // Set this to true for detailed logging:
-  logger: true,
-});
-
-const crypto = require('crypto');
-
-function sha256(message) {
-  return crypto.createHash('sha256').update(message).digest('hex');
-}
 
 // ADD FAVORITES ARRAY VARIABLE FROM TODO HERE
 
