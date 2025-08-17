@@ -23,6 +23,59 @@ const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BAS
 
 require('dotenv').config();
 
+
+
+
+
+
+
+
+
+
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+
+  res.end = function (...args) {
+    const duration = Date.now() - start;
+
+    console.log("---- Safari Debug Log ----");
+    console.log("Time:", new Date().toISOString());
+    console.log("Method:", req.method);
+    console.log("URL:", req.originalUrl);
+    console.log("IP:", req.ip);
+    console.log("HTTP Version:", req.httpVersion);
+    console.log("Headers:", req.headers);
+    if (Object.keys(req.query).length) {
+      console.log("Query Params:", req.query);
+    }
+    if (req.body && Object.keys(req.body).length) {
+      console.log("Body:", req.body);
+    }
+    console.log("Response Code:", res.statusCode);
+    console.log("Duration (ms):", duration);
+    console.log("--------------------------");
+
+    originalEnd.apply(res, args);
+  };
+
+  next();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Require the fastify framework and instantiate it
 const fastify = require("fastify")({
   // Set this to true for detailed logging:
