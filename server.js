@@ -21,6 +21,69 @@ const PANTRY_ID = 'bba6023d-25bc-4317-a973-a0fc6de534b7'; // from getpantry.clou
 const BASKET = 'CaviartFarmsTimecardAPI'; // your basket name
 const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+app.use((req, res, next) => {
+  const start = Date.now();
+  const originalEnd = res.end;
+
+  res.end = function (...args) {
+    const duration = Date.now() - start;
+
+    console.log("---- Safari Debug Log ----");
+    console.log("Time:", new Date().toISOString());
+    console.log("Method:", req.method);
+    console.log("URL:", req.originalUrl);
+    console.log("IP:", req.ip);
+    console.log("HTTP Version:", req.httpVersion);
+    console.log("Headers:", req.headers);
+    if (Object.keys(req.query).length) {
+      console.log("Query Params:", req.query);
+    }
+    if (req.body && Object.keys(req.body).length) {
+      console.log("Body:", req.body);
+    }
+    console.log("Response Code:", res.statusCode);
+    console.log("Duration (ms):", duration);
+    console.log("--------------------------");
+
+    originalEnd.apply(res, args);
+  };
+
+  next();
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 require('dotenv').config();
 
 // Require the fastify framework and instantiate it
