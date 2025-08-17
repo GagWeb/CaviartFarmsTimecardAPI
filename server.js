@@ -19,7 +19,7 @@ const axios = require('axios');
 
 const PANTRY_ID = 'bba6023d-25bc-4317-a973-a0fc6de534b7'; // from getpantry.cloud
 const BASKET = 'CaviartFarmsTimecardAPI'; // your basket name
-const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
+const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
 
 require('dotenv').config();
 
@@ -194,7 +194,7 @@ async function _readDataWithRetries(retries = 0) {
 }
 
 
-async function writeData(data, url = BASE_URL) {
+async function writeData(data, url = PANTRY_URL) {
   try {
     await axios.post(url, data);
     console.log("Pantry updated.");
