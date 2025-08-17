@@ -19,67 +19,14 @@ const axios = require('axios');
 
 const PANTRY_ID = 'bba6023d-25bc-4317-a973-a0fc6de534b7'; // from getpantry.cloud
 const BASKET = 'CaviartFarmsTimecardAPI'; // your basket name
-const PANTRY_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
+const BASE_URL = `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/${BASKET}`;
 
 require('dotenv').config();
-
-
-
-
-
-
-
-
-
-
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const originalEnd = res.end;
-
-  res.end = function (...args) {
-    const duration = Date.now() - start;
-
-    console.log("---- Safari Debug Log ----");
-    console.log("Time:", new Date().toISOString());
-    console.log("Method:", req.method);
-    console.log("URL:", req.originalUrl);
-    console.log("IP:", req.ip);
-    console.log("HTTP Version:", req.httpVersion);
-    console.log("Headers:", req.headers);
-    if (Object.keys(req.query).length) {
-      console.log("Query Params:", req.query);
-    }
-    if (req.body && Object.keys(req.body).length) {
-      console.log("Body:", req.body);
-    }
-    console.log("Response Code:", res.statusCode);
-    console.log("Duration (ms):", duration);
-    console.log("--------------------------");
-
-    originalEnd.apply(res, args);
-  };
-
-  next();
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Require the fastify framework and instantiate it
 const fastify = require("fastify")({
   // Set this to true for detailed logging:
-  logger: true,
+  logger: false,
 });
 
 const crypto = require('crypto');
@@ -107,94 +54,40 @@ fastify.register(require("@fastify/view"), {
 });
 
 
-// === CONFIGURATION ===
-const BASE_URL     = 'https://caviartfarmstimecardapi.onrender.com/h';
-const MAX_RETRIES  = 3;       // how many times to retry on 429
-const DEBOUNCE_MS  = 300;     // hold-off before firing a new request
+// Max number of retries if 429 is received
+const MAX_RETRIES = 3;
 
-// === UTILITY FUNCTIONS ===
+// Delay helper (in ms)
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// simple debounce (if you don’t want to pull in lodash.debounce)
-function debounce(fn, wait) {
-  let timeout;
-  return function(...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => fn.apply(this, args), wait);
-  };
-}
-
-// detect iOS Safari (including iPadOS)
-const ua = navigator.userAgent || '';
-const isIOS_Safari = /Safari/.test(ua) && /iPhone|iPad|iPod/.test(ua);
-
-// === CLIENT-SIDE CACHING / DEDUPLICATION STATE ===
-let inFlightPromise = null;
-let lastETag        = null;
-
-// === PUBLIC API ===
-// call readData(); multiple calls within DEBOUNCE_MS will collapse
-const readData = debounce(() => _readDataWithRetries(), DEBOUNCE_MS);
-
-// === INTERNAL WORKHORSE ===
-async function _readDataWithRetries(retries = 0) {
-  // 1) Deduplicate: if there’s already a call in progress, return it
-  if (inFlightPromise) {
-    return inFlightPromise;
-  }
-
-  // 2) Kick off the actual request
-  inFlightPromise = (async () => {
-    try {
-      // 3) Conditional cache header
-      const headers = {};
-      if (lastETag) {
-        headers['If-None-Match'] = lastETag;
+async function readData(retries = 0) {
+  try {
+    const res = await axios.get(BASE_URL);
+    return res.data;
+  } catch (err) {
+    if (err.response && err.response.status === 429) {
+      if (retries >= MAX_RETRIES) {
+        console.error(`Rate limit hit. Tried ${MAX_RETRIES} times. Giving up.`);
+        return null;
       }
 
-      const res = await axios.get(BASE_URL, { headers });
+      const retryAfter = err.response.headers['retry-after']
+        ? parseInt(err.response.headers['retry-after'], 10) * 1000
+        : 30000; // default to 30 seconds
 
-      // 4) Handle 304 Not Modified
-      if (res.status === 304) {
-        return null; // no new data
-      }
-
-      // 5) Store new ETag for next time
-      if (res.headers.etag) {
-        lastETag = res.headers.etag;
-      }
-
-      return res.data;
-    } catch (err) {
-      const status = err.response?.status;
-
-      // 6) Rate-limit retry logic
-      if (status === 429 && retries < MAX_RETRIES) {
-        // read server’s Retry-After or pick a base delay
-        const serverDelay = parseInt(err.response.headers['retry-after'] || '0', 10) * 1000;
-        const baseDelay   = isIOS_Safari ? 60000 : 30000; // slower back-off on iOS Safari
-        const delay       = serverDelay > 0 ? serverDelay : baseDelay;
-
-        console.warn(`429 hit (Safari? ${isIOS_Safari}). retry #${retries+1} in ${delay/1000}s`);
-        await sleep(delay);
-        return _readDataWithRetries(retries + 1);
-      }
-
-      // 7) Bubble up any other errors
-      throw err;
-    } finally {
-      // 8) Clear the in-flight marker no matter what
-      inFlightPromise = null;
+      console.warn(`429 Too Many Requests. Retrying in ${retryAfter / 1000}s...`);
+      await sleep(retryAfter);
+      return readData(retries + 1);
+    } else {
+      console.error("Failed to read from Pantry:", err.message);
+      return null;
     }
-  })();
-
-  return inFlightPromise;
+  }
 }
 
-
-async function writeData(data, url = PANTRY_URL) {
+async function writeData(data, url = BASE_URL) {
   try {
     await axios.post(url, data);
     console.log("Pantry updated.");
@@ -344,6 +237,7 @@ fastify.get('/h', async (request, reply) => {
               if (!timeResp.ok) throw new Error('Timecheck request failed');
               const isTimeValid = await timeResp.json();
               if (!isTimeValid) {
+                warningDiv.textContent = 'Invalid timecode. Cannot clock in/out.';
                 warningDiv.textContent = 'Invalid timecode. Cannot clock in/out. You may have to scan the QR code again.';
                 return;
               }
@@ -441,7 +335,7 @@ fastify.get('/email', async(request, reply) => {
     data = totalData[keys[j]]["hours"];
     employee = keys[j];
     var totalHours = 0;
-    
+
     for(var i = 0; i < data.length; i++){
       console.log(data[i]);
       htmlContent += "<tr><td>" + new Date(data[i]["in"] * 1000).toISOString().replace('T', ' ').substring(0, 19) + "</td>";
@@ -456,7 +350,7 @@ fastify.get('/email', async(request, reply) => {
       subject: employee + "'s Hours",
       html: "<style>td, th {border: 1px solid #dddddd;text-align: left;padding: 8px;}tr:nth-child(even) {background-color: #dddddd;}</style><table style='font-size: 50%; border-collapse: collapse; width: 100%;'><tr><th>In</th><th>Out</th><th>Hours</th></tr>" + htmlContent + "</table><br><br><h2>Total Hours: " + totalHours + "</h2>"
     };
-    
+
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         console.error("❌ sendMail error:", error);
@@ -466,14 +360,14 @@ fastify.get('/email', async(request, reply) => {
     });
 
   }
-  
+
   await writeData(totalData, `https://getpantry.cloud/apiv1/pantry/${PANTRY_ID}/basket/Backup`);
   var newData = totalData;
   for(var i = 0; i < keys.length; i++){
     newData[keys[i]]["hours"] = new Array();
   }
   await writeData(newData);
-  
+
 });
 
 fastify.get('/data.json', async(request, reply) => {
